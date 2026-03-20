@@ -174,7 +174,6 @@ class SDARAttention(nn.Module):
         self.alt_stream = alt_stream
 
     def forward_prepare_native(self, positions, hidden_states, forward_batch):
-        positions = positions.to(torch.int32)
         qkv, _ = self.qkv_proj(hidden_states)
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q, k = apply_qk_norm(
@@ -194,7 +193,6 @@ class SDARAttention(nn.Module):
                     value=v,
                     layer=self.attn,
                     forward_batch=forward_batch,
-                    cache_loc_dtype=positions.dtype,
                 )
                 if enable_fused_set_kv_buffer(forward_batch)
                 else None
@@ -208,7 +206,6 @@ class SDARAttention(nn.Module):
         hidden_states: torch.Tensor,
         forward_batch: ForwardBatch,
     ):
-        positions = positions.to(torch.int32)
         if get_global_server_args().rl_on_policy_target is not None:
             hidden_states = hidden_states.bfloat16()
 
@@ -231,7 +228,6 @@ class SDARAttention(nn.Module):
                     value=v,
                     layer=self.attn,
                     forward_batch=forward_batch,
-                    cache_loc_dtype=positions.dtype,
                 )
                 if enable_fused_set_kv_buffer(forward_batch)
                 else None

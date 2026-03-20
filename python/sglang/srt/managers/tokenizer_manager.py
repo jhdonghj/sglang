@@ -942,12 +942,9 @@ class TokenizerManager(TokenizerCommunicatorMixin, TokenizerManagerMultiItemMixi
         # Note: if there are preferred sampling params, we use them if they are not
         # explicitly passed in sampling_params
         if self.preferred_sampling_params:
-            sampling_kwargs = {
-                **self.preferred_sampling_params,
-                **(obj.sampling_params or {}),
-            }
+            sampling_kwargs = {**self.preferred_sampling_params, **obj.sampling_params}
         else:
-            sampling_kwargs = dict(obj.sampling_params or {})
+            sampling_kwargs = obj.sampling_params
         sampling_params = self.sampling_params_class(**sampling_kwargs)
         sampling_params.normalize(self.tokenizer)
         sampling_params.verify(self.model_config.vocab_size)

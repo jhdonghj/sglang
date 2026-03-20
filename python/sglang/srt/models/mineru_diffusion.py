@@ -328,12 +328,24 @@ class MinerUDiffusionForConditionalGeneration(nn.Module):
         positions = positions.to(torch.int32)
         if input_embeds is None:
             input_embeds = self._build_input_embeds(input_ids, forward_batch)
-        return self.language_model(
-            input_ids=input_ids,
-            positions=positions,
-            forward_batch=forward_batch,
-            input_embeds=input_embeds,
-        )
+        original_positions = forward_batch.positions
+        original_out_cache_loc = forward_batch.out_cache_loc
+        forward_batch.positions = positions
+        if (
+            forward_batch.out_cache_loc is not None
+            and forward_batch.out_cache_loc.dtype != positions.dtype
+        ):
+            forward_batch.out_cache_loc = forward_batch.out_cache_loc.to(positions.dtype)
+        try:
+            return self.language_model(
+                input_ids=input_ids,
+                positions=positions,
+                forward_batch=forward_batch,
+                input_embeds=input_embeds,
+            )
+        finally:
+            forward_batch.positions = original_positions
+            forward_batch.out_cache_loc = original_out_cache_loc
 
     def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
         params_dict = dict(self.named_parameters(remove_duplicate=False))

@@ -541,7 +541,6 @@ class CudaGraphRunner:
 
         self.dllm_config = DllmConfig.from_server_args(model_runner.server_args)
         self.is_dllm = self.dllm_config is not None
-        self.is_multimodal = model_runner.is_multimodal
 
         self.capture_forward_mode = ForwardMode.DECODE
         self.capture_hidden_mode = CaptureHiddenMode.NULL
@@ -655,37 +654,6 @@ class CudaGraphRunner:
 
     def _cache_loc_dtype(self):
         return torch.int64
-
-    def _prepare_multimodal_input_embeds(
-        self, forward_batch: ForwardBatch, static_num_tokens: int
-    ) -> Optional[torch.Tensor]:
-        if not self.is_multimodal:
-            return None
-
-        input_embeds = self.buffers.input_embeds[:static_num_tokens]
-        raw_num_tokens = forward_batch.input_ids.numel()
-        if raw_num_tokens < static_num_tokens:
-            input_embeds[raw_num_tokens:static_num_tokens].zero_()
-
-        raw_input_embeds = input_embeds[:raw_num_tokens]
-        if hasattr(self.model_runner.model, "prepare_cuda_graph_input_embeds"):
-            self.model_runner.model.prepare_cuda_graph_input_embeds(
-                input_ids=forward_batch.input_ids,
-                forward_batch=forward_batch,
-                input_embeds=raw_input_embeds,
-            )
-        elif forward_batch.input_embeds is not None:
-            raw_input_embeds.copy_(
-                forward_batch.input_embeds.to(dtype=raw_input_embeds.dtype)
-            )
-        else:
-            raw_input_embeds.copy_(
-                self.model_runner.model.get_input_embeddings()(
-                    forward_batch.input_ids
-                ).to(dtype=raw_input_embeds.dtype)
-            )
-
-        return input_embeds
 
     def can_run(self, forward_batch: ForwardBatch):
         if self.require_mlp_tp_gather:
@@ -873,7 +841,6 @@ class CudaGraphRunner:
         seq_lens_cpu = buffers.seq_lens_cpu[:bs]
         out_cache_loc = buffers.out_cache_loc[:num_tokens]
         positions = buffers.positions[:num_tokens]
-        input_embeds = buffers.input_embeds[:num_tokens] if self.is_multimodal else None
         if self.is_encoder_decoder:
             encoder_lens = buffers.encoder_lens[:bs]
         else:
@@ -1024,11 +991,6 @@ class CudaGraphRunner:
                 kwargs["pp_proxy_tensors"] = PPProxyTensors(
                     {k: v.clone() for k, v in pp_proxy_tensors.tensors.items()}
                 )
-            if input_embeds is not None and "input_embeds" in inspect.signature(
-                forward
-            ).parameters:
-                kwargs["input_embeds"] = input_embeds
-
             logits_output_or_pp_proxy_tensors = forward(
                 input_ids,
                 forward_batch.positions,
@@ -1125,10 +1087,6 @@ class CudaGraphRunner:
             ),
             pp_proxy_tensors=pp_proxy_tensors,
         )
-        if self.is_multimodal:
-            self._prepare_multimodal_input_embeds(
-                forward_batch, bs * self.num_tokens_per_bs
-            )
         if self.enable_two_batch_overlap:
             self.tbo_plugin.replay_prepare(
                 forward_mode=self.capture_forward_mode,

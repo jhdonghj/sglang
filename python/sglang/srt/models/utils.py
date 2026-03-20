@@ -118,7 +118,6 @@ def create_fused_set_kv_buffer_arg(
     value: torch.Tensor,
     layer: RadixAttention,
     forward_batch: ForwardBatch,
-    cache_loc_dtype: Optional[torch.dtype] = None,
 ):
     from sglang.jit_kernel.rope import FusedSetKVBufferArg
 
@@ -128,14 +127,11 @@ def create_fused_set_kv_buffer_arg(
     k_buffer = token_to_kv_pool.get_key_buffer(layer_id)
     v_buffer = token_to_kv_pool.get_value_buffer(layer_id)
     assert layer.k_scale is None and layer.v_scale is None, "scale not supported"
-    cache_loc = forward_batch.out_cache_loc
-    if cache_loc_dtype is not None and cache_loc.dtype != cache_loc_dtype:
-        cache_loc = cache_loc.to(cache_loc_dtype)
     return FusedSetKVBufferArg(
         value=value,
         k_buffer=k_buffer.view(k_buffer.shape[0], -1),
         v_buffer=v_buffer.view(v_buffer.shape[0], -1),
-        cache_loc=cache_loc,
+        cache_loc=forward_batch.out_cache_loc,
     )
 
 
